@@ -1,0 +1,10 @@
+# Ignore sucklesync-specific files
+*.log
+*.pid
+
+# Ignore editor swap files
+*.swp
+*.swo
+
+# Ignore compiled Python files
+*.pyc

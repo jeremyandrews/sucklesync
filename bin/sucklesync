@@ -1,0 +1,55 @@
+#!/usr/bin/env python2
+
+from sucklesync import sucklesync
+
+import argparse
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+            prog="sucklesync",
+            description="A wrapper around rsync to simplify synchronization of remote directories")
+    # --verbose -v, verbose
+    parser.add_argument("--verbose", "-v", action="count", help="verbose output")
+    # --config -c, configuration file
+    parser.add_argument("--config", "-c", help="specify custom path for configuration file")
+
+    subparsers = parser.add_subparsers()
+
+    # start
+    parser_start = subparsers.add_parser("start", help="start sucklesync")
+    parser_start.add_argument("--verbose", "-v", action="count", help="verbose logging")
+    parser_start.add_argument("--foreground", "-f", action="count", help="don't daemonize, run in the foreground")
+    parser_start.set_defaults(func=sucklesync.start)
+
+    # stop
+    parser_stop = subparsers.add_parser("stop", help="stop sucklesync")
+    parser_stop.add_argument("--verbose", "-v", action="count", help="verbose logging")
+    parser_stop.set_defaults(func=sucklesync.stop)
+
+    # restart
+    parser_restart = subparsers.add_parser("restart", help="restart sucklesync")
+    parser_restart.add_argument("--verbose", "-v", action="count", help="verbose logging")
+    parser_restart.add_argument("--foreground", "-f", action="count", help="don't daemonize, run in the foreground")
+    parser_restart.set_defaults(func=sucklesync.restart)
+
+    # status
+    parser_status = subparsers.add_parser("status", help="sucklesync status")
+    parser_status.add_argument("--verbose", "-v", action="count", help="verbose logging")
+    parser_status.set_defaults(func=sucklesync.status)
+
+    args = parser.parse_args()
+
+    if args.config:
+        config = args.config
+    else:
+        config = sucklesync.DEFAULT_CONFIG
+
+    ss = sucklesync.SuckleSync(config)
+    ss.verbose = args.verbose
+
+    ss._load_debugger()
+    ss._load_configuration()
+
+    ss.args = args
+
+    args.func(ss)
