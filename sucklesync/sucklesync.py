@@ -7,6 +7,8 @@ import logging
 from utils import debug
 from config import config
 
+sucklesync_instance = None
+
 __version__ = "0.1"
 
 DEFAULT_CONFIG    = ["/etc/sucklesync.cfg", "/usr/local/etc/sucklesync.cfg", "~/.sucklesync.cfg", "./sucklesync.cfg"]
@@ -70,7 +72,7 @@ class SuckleSync:
 
         # load logging preferences
         self.logging["filename"] = self.configuration.GetText("Logging", "filename", DEFAULT_LOGFILE, False)
-        self.logging["pidfile"] = self.configuration.GetText("Logging", "filename", DEFAULT_PIDFILE, False)
+        self.logging["pidfile"] = self.configuration.GetText("Logging", "pidfile", DEFAULT_PIDFILE, False)
         self.logging["level"] = self.configuration.GetText("Logging", "level", DEFAULT_LOGLEVEL, False)
 
         # load email preferences
@@ -88,7 +90,25 @@ class SuckleSync:
         self.mail["password"] = self.configuration.GetText("Email", "smtp_password", None, required)
 
 def start(ss):
+    import sucklesync
+
     ss.debugger.warning("starting sucklesync")
+
+    sucklesync.sucklesync_instance = ss
+
+    if ss.daemonize:
+        try:
+            import daemonize
+        except Exception as e:
+            ss.debugger.error("fatal exception: %s", (e,))
+            ss.debugger.critical("failed to import daemonize (as user %s), try 'pip install daemonize', exiting", (ss.debugger.whoami()))
+        ss.debugger.info("successfuly imported daemonize")
+
+        try:
+            daemon = daemonize.Daemonize(app="sucklesync", pid=ss.logging["pidfile"], action=main, keep_fds=[ss.debugger.handler.stream.fileno()], logger=ss.logger, verbose=True)
+            daemon.start()
+        except Exception as e:
+            ss.debugger.critical("Failed to daemonize: %s, exiting", (e,))
 
 def stop(ss):
     ss.debugger.warning("stopping sucklesync")
@@ -98,3 +118,10 @@ def restart(ss):
 
 def status(ss):
     print "sucklesync status ..."
+
+def main():
+    import sucklesync
+
+    ss = sucklesync.sucklesync_instance
+
+    ss.debugger.warning("daemonized")
