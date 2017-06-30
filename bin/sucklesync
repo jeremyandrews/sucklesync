@@ -45,10 +45,36 @@ if __name__ == "__main__":
         config = sucklesync.DEFAULT_CONFIG
 
     ss = sucklesync.SuckleSync(config)
-    ss.verbose = args.verbose
+
+    # control verbosity
+    if args.verbose:
+        ss.verbose = args.verbose
+    else:
+        ss.verbose = False
+
+    # control whether or not we daemonize
+    try:
+        # not all subparsers define this option
+        if args.foreground:
+            ss.daemonize = False
+        else:
+            ss.daemonize = True
+    except:
+        ss.daemonize = True
 
     ss._load_debugger()
     ss._load_configuration()
+
+    if not ss.binaries:
+        ss.debugger.critical("unable to start, binary paths not configured properly")
+    if not ss.flags:
+        ss.debugger.critical("unable to start, binary files not configured properly")
+    if not ss.debugger:
+        ss.debugger.critical("unable to start, logging not configured properly")
+    if not ss.paths:
+        ss.debugger.critical("unable to start, sucklesync paths not configured properly")
+
+    ss._enable_debugger()
 
     ss.args = args
 

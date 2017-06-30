@@ -87,21 +87,22 @@ class Config:
         try:
             emails = self.GetTextList(section, option, default, required, secret, True)
             addresses = []
-            for email in emails:
-                pieces = email.split('|')
-                if len(pieces) == 2:
-                    name, address = pieces
-                    if valid_email_address(address):
-                        addresses.append((name.strip(), address.strip()))
-                    else:
-                        self.debugger.error('ignoring invalid email address (%s)', (address,))
-                elif len(pieces) == 1:
-                    if valid_email_address(email):
-                        addresses.append(email)
+            if emails:
+                for email in emails:
+                    pieces = email.split('|')
+                    if len(pieces) == 2:
+                        name, address = pieces
+                        if valid_email_address(address):
+                            addresses.append((name.strip(), address.strip()))
+                        else:
+                            self.debugger.error('ignoring invalid email address (%s)', (address,))
+                    elif len(pieces) == 1:
+                        if valid_email_address(email):
+                            addresses.append(email)
+                        else:
+                            self.debugger.error('ignoring invalid email address (%s)', (email,))
                     else:
                         self.debugger.error('ignoring invalid email address (%s)', (email,))
-                else:
-                    self.debugger.error('ignoring invalid email address (%s)', (email,))
             return self._GetValue(section, option, addresses, default, required, secret)
         except Exception as e:
             self.debugger.dump_exception("GetEmailList() caught exception")

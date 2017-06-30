@@ -10,8 +10,6 @@ from config import config
 __version__ = "0.1"
 
 DEFAULT_CONFIG    = ["/etc/sucklesync.cfg", "/usr/local/etc/sucklesync.cfg", "~/.sucklesync.cfg", "./sucklesync.cfg"]
-DEFAULT_USER      = "daemon"
-DEFAULT_GROUP     = "daemon"
 DEFAULT_LOGLEVEL  = logging.WARNING
 DEFAULT_LOGFILE   = "/var/log/sucklesync/sucklesync.log"
 DEFAULT_LOGFORMAT = "%(asctime)s [%(levelname)s/%(processName)s] %(message)s"
@@ -29,9 +27,32 @@ class SuckleSync:
     def _load_debugger(self):
         import logging.handlers
 
-        logger = logging.getLogger(__name__)
-        formatter = logging.Formatter(DEFAULT_LOGFORMAT)
-        self.debugger = debug.Debugger(self.verbose, logger, debug.FILE)
+        try:
+            self.logger = logging.getLogger(__name__)
+            self.debugger = debug.Debugger(self.verbose, self.logger, debug.FILE)
+            # start by logging to stdout
+            self.debugger.handler = logging.StreamHandler()
+            formatter = logging.Formatter(DEFAULT_LOGFORMAT)
+            self.debugger.handler.setFormatter(formatter)
+            self.logger.addHandler(self.debugger.handler)
+
+        except Exception as e:
+            self.debugger.dump_exception("_load_debugger() caught exception")
+
+    def _enable_debugger(self):
+        import logging.handlers
+
+        try:
+            if self.daemonize:
+                self.debugger.handler = logging.FileHandler(self.logging["filename"])
+            else:
+                self.debugger.handler = logging.StreamHandler()
+            formatter = logging.Formatter(DEFAULT_LOGFORMAT)
+            self.debugger.handler.setFormatter(formatter)
+            self.logger.addHandler(self.debugger.handler)
+            self.logger.setLevel(self.logging["level"])
+        except Exception as e:
+            self.debugger.dump_exception("_enable_debugger() caught exception")
 
     def _load_configuration(self):
         self.configuration = config.Config(self.debugger)
@@ -48,9 +69,9 @@ class SuckleSync:
         self.paths = self.configuration.GetItemPairs("Sucklepaths", ["source", "destination"])
 
         # load logging preferences
-        self.logging["filename"] = self.configuration.GetText("Logging", "filename", "/var/log/sucklesync/sucklesync.log", False)
-        self.logging["pidfile"] = self.configuration.GetText("Logging", "filename", "/var/run/sucklesync.pid", False)
-        self.logging["level"] = self.configuration.GetText("Logging", "level", "WARNING", False)
+        self.logging["filename"] = self.configuration.GetText("Logging", "filename", DEFAULT_LOGFILE, False)
+        self.logging["pidfile"] = self.configuration.GetText("Logging", "filename", DEFAULT_PIDFILE, False)
+        self.logging["level"] = self.configuration.GetText("Logging", "level", DEFAULT_LOGLEVEL, False)
 
         # load email preferences
         self.mail["enabled"] = self.configuration.GetBoolean("Email", "enabled", False, False)
@@ -66,16 +87,14 @@ class SuckleSync:
         self.mail["username"] = self.configuration.GetText("Email", "smtp_username", None, required)
         self.mail["password"] = self.configuration.GetText("Email", "smtp_password", None, required)
 
-        print self.binaries, self.paths, self.flags, self.mail
-
 def start(ss):
-    print "starting sucklesync ..."
+    ss.debugger.warning("starting sucklesync")
 
 def stop(ss):
-    print "stopping sucklesync ..."
+    ss.debugger.warning("stopping sucklesync")
 
 def restart(ss):
-    print "restarting sucklesync ..."
+    ss.debugger.warning("restarting sucklesync")
 
 def status(ss):
     print "sucklesync status ..."
