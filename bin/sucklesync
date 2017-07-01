@@ -65,10 +65,10 @@ if __name__ == "__main__":
     ss._load_debugger()
     ss._load_configuration()
 
-    if not ss.binaries:
-        ss.debugger.critical("unable to start, binary paths not configured properly")
-    if not ss.flags:
-        ss.debugger.critical("unable to start, binary files not configured properly")
+    if not ss.local:
+        ss.debugger.critical("unable to start, local binaries and flags not configured properly")
+    if not ss.remote:
+        ss.debugger.critical("unable to start, remote binaries and flags not configured properly")
     if not ss.debugger:
         ss.debugger.critical("unable to start, logging not configured properly")
     if not ss.paths:

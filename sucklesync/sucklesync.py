@@ -4,6 +4,7 @@
 
 import logging
 
+import sucklesync
 from utils import debug
 from config import config
 
@@ -20,11 +21,12 @@ DEFAULT_PIDFILE   = "/var/run/sucklesync.pid"
 class SuckleSync:
     def __init__(self, config):
         self.config = config
-        self.binaries = {}
-        self.flags = {}
+        self.local = {}
+        self.remote = {}
         self.paths = []
         self.logging = {}
         self.mail = {}
+        self.ssh = {}
 
     def _load_debugger(self):
         import logging.handlers
@@ -57,15 +59,25 @@ class SuckleSync:
             self.debugger.dump_exception("_enable_debugger() caught exception")
 
     def _load_configuration(self):
+        try:
+            from shlex import quote as cmd_quote
+        except ImportError:
+            from pipes import quote as cmd_quote
+
         self.configuration = config.Config(self.debugger)
 
-        # load binary paths
-        self.binaries["local_rsync"] = self.configuration.GetText("Binaries", "local_rsync", "/usr/bin/rsync")
-        self.binaries["remote_find"] = self.configuration.GetText("Binaries", "remote_find", "/usr/bin/find")
+        # load binary paths and associated flags
+        self.local["rsync"] = cmd_quote(self.configuration.GetText("Local", "rsync", "/usr/bin/rsync"))
+        self.local["rsync_flags"] = cmd_quote(self.configuration.GetText("Local", "rsync_flags", "-aP"))
+        self.local["ssh"] = cmd_quote(self.configuration.GetText("Local", "ssh", "/usr/bin/ssh"))
+        self.local["ssh_flags"] = cmd_quote(self.configuration.GetText("Local", "ssh_flags", "-C"))
+        self.remote["find"] = cmd_quote(self.configuration.GetText("Remote", "find", "/usr/bin/find"))
+        self.remote["find_flags"] = cmd_quote(self.configuration.GetText("Remote", "find_flags", "-mmin -5 -print"))
 
-        # load flags used when launching binaries
-        self.flags["rsync_flags"] = self.configuration.GetText("Flags", "rsync_flags", "-aP")
-        self.flags["find_flags"] = self.configuration.GetText("Flags", "find_flags", "-mmin -5 -print")
+        # load SSH configuration
+        self.remote["hostname"] = self.configuration.GetText("Remote", "hostname")
+        self.remote["port"] = self.configuration.GetInt("Remote", "port", 22, False)
+        self.remote["username"] = self.configuration.GetText("Remote", "username", False, False)
 
         # load paths that will be suckle-synced
         self.paths = self.configuration.GetItemPairs("Sucklepaths", ["source", "destination"])
@@ -90,11 +102,40 @@ class SuckleSync:
         self.mail["password"] = self.configuration.GetText("Email", "smtp_password", None, required)
 
 def start(ss):
-    import sucklesync
+    import sys
+    import os
+    import subprocess
 
     ss.debugger.warning("starting sucklesync")
-
     sucklesync.sucklesync_instance = ss
+
+    try:
+        with open(ss.logging["filename"], "w"):
+            ss.debugger.info("successfully writing to logfile")
+    except IOError:
+        ss.debugger.critical("failed to write to logfile: %s", (ss.logging["filename"],))
+
+    try:
+        subprocess.call([ss.local["rsync"], "-qh"])
+        ss.debugger.info("successfully tested local rsync: %s -qh", (ss.local["rsync"],))
+    except OSError as e:
+        if e.errno == os.errno.ENOENT:
+            ss.debugger.critical("failed to find local rsync: %s", (ss.local["rsync"],))
+        else:
+            ss.debugger.critical("failed to execute local rsync: %s -qh", (ss.local["rsync"],))
+
+    try:
+        command = "%s %s -type d" % (ss.remote["find"], ss.remote["find"])
+        rc = subprocess.call([ss.local["ssh"], ss.remote["hostname"], ss.local["ssh_flags"], command])
+        if rc:
+            ss.debugger.critical("failed to execute local ssh: /usr/sbin/ssh -C %s, return code: %d", (command, rc))
+        else:
+          ss.debugger.info("successfully tested local ssh: %s %s %s %s", (ss.local["ssh"], ss.remote["hostname"], ss.local["ssh_flags"], command))
+    except OSError as e:
+        if e.errno == os.errno.ENOENT:
+            ss.debugger.critical("failed to find local ssh: %s", (ss.local["ssh"],))
+        else:
+            ss.debugger.critical("failed to execute local ssh: /usr/sbin/ssh -C %s", (command,))
 
     if ss.daemonize:
         try:
@@ -102,13 +143,21 @@ def start(ss):
         except Exception as e:
             ss.debugger.error("fatal exception: %s", (e,))
             ss.debugger.critical("failed to import daemonize (as user %s), try 'pip install daemonize', exiting", (ss.debugger.whoami()))
-        ss.debugger.info("successfuly imported daemonize")
+        ss.debugger.info("successfully imported daemonize")
 
         try:
-            daemon = daemonize.Daemonize(app="sucklesync", pid=ss.logging["pidfile"], action=main, keep_fds=[ss.debugger.handler.stream.fileno()], logger=ss.logger, verbose=True)
+            with open(ss.logging["pidfile"], "w"):
+                ss.debugger.info("successfully writing to pidfile")
+        except IOError:
+            ss.debugger.critical("failed to write to pidfile: %s", (ss.logging["pidfile"],))
+
+        try:
+            daemon = daemonize.Daemonize(app="sucklesync", pid=ss.logging["pidfile"], action=sucklesync, keep_fds=[ss.debugger.handler.stream.fileno()], logger=ss.logger, verbose=True)
             daemon.start()
         except Exception as e:
             ss.debugger.critical("Failed to daemonize: %s, exiting", (e,))
+    else:
+        sucklesync()
 
 def stop(ss):
     ss.debugger.warning("stopping sucklesync")
@@ -119,9 +168,7 @@ def restart(ss):
 def status(ss):
     print "sucklesync status ..."
 
-def main():
-    import sucklesync
-
+def sucklesync():
     ss = sucklesync.sucklesync_instance
 
     ss.debugger.warning("daemonized")
