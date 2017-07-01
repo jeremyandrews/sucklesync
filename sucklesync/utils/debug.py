@@ -48,19 +48,16 @@ class Debugger:
         if exc_type:
             if message:
                 if is_error:
-                    print """%s: %s [%s]""" % (message, exc_value, exc_traceback.tb_lineno)
                     self.error("%s: %s [%s]", (message, exc_value, exc_traceback.tb_lineno))
                 else:
                     self.info("%s: %s [%s]", (message, exc_value, exc_traceback.tb_lineno))
             else:
                 if is_error:
-                    print """%s [%s]""" % (exc_value, exc_traceback.tb_lineno)
                     self.error("%s [%s]", (exc_value, exc_traceback.tb_lineno))
                 else:
                     self.info("%s [%s]", (exc_value, exc_traceback.tb_lineno))
         elif message:
             if is_error:
-                print """%s""" % message
                 self.error("%s", (message,))
             else:
                 self.info("%s", (message,))
@@ -79,8 +76,7 @@ class Debugger:
                     self.logger.log(level, message)
 
             if fatal:
-                # if writing to file we log and then print message, otherwise just print
-                self.fatal(message, args)
+                self.fatal("Fatal Error: exiting")
 
             if self.mode == PRINT:
                 if ((self.verbose and verbose >= self.verbose) or (verbose == ALWAYS)):

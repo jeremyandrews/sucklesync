@@ -3,6 +3,7 @@
 """
 
 import logging
+from easyprocess import EasyProcess
 
 import sucklesync
 from utils import debug
@@ -77,6 +78,7 @@ class SuckleSync:
         # load SSH configuration
         self.remote["hostname"] = self.configuration.GetText("Remote", "hostname")
         self.remote["port"] = self.configuration.GetInt("Remote", "port", 22, False)
+        self.remote["timeout"] = self.configuration.GetInt("Remote", "timeout", 5, False)
         self.remote["username"] = self.configuration.GetText("Remote", "username", False, False)
 
         # load paths that will be suckle-synced
@@ -109,12 +111,14 @@ def start(ss):
     ss.debugger.warning("starting sucklesync")
     sucklesync.sucklesync_instance = ss
 
+    # test that we can write to the log
     try:
         with open(ss.logging["filename"], "w"):
             ss.debugger.info("successfully writing to logfile")
     except IOError:
         ss.debugger.critical("failed to write to logfile: %s", (ss.logging["filename"],))
 
+    # test rsync -- run a NOP
     try:
         subprocess.call([ss.local["rsync"], "-qh"])
         ss.debugger.info("successfully tested local rsync: %s -qh", (ss.local["rsync"],))
@@ -124,18 +128,20 @@ def start(ss):
         else:
             ss.debugger.critical("failed to execute local rsync: %s -qh", (ss.local["rsync"],))
 
+    # test ssh -- run a NOP find
+    command = ss.local["ssh"] + " " + ss.remote["hostname"] + " " + ss.local["ssh_flags"] + " " + ss.remote["find"] + " " + ss.remote["find"] + " -type d"
     try:
-        command = "%s %s -type d" % (ss.remote["find"], ss.remote["find"])
-        rc = subprocess.call([ss.local["ssh"], ss.remote["hostname"], ss.local["ssh_flags"], command])
-        if rc:
-            ss.debugger.critical("failed to execute local ssh: /usr/sbin/ssh -C %s, return code: %d", (command, rc))
+        output = EasyProcess(command).call(timeout=ss.remote["timeout"])
+        if output.timeout_happened:
+            ss.debugger.critical("failed to ssh to remote server, took longer than %d seconds. Command tried: %s", (ss.remote["timeout"], command))
+        elif output.return_code:
+            ss.debugger.critical("ssh to remote server returned error code (%d), error (%s). Command tried: %s", (output.return_code, output.stderr, command))
+        elif output.oserror:
+            ss.debugger.critical("failed to ssh to remote server, error (%s). Command tried: %s", (output.oserror, command))
         else:
-          ss.debugger.info("successfully tested local ssh: %s %s %s %s", (ss.local["ssh"], ss.remote["hostname"], ss.local["ssh_flags"], command))
-    except OSError as e:
-        if e.errno == os.errno.ENOENT:
-            ss.debugger.critical("failed to find local ssh: %s", (ss.local["ssh"],))
-        else:
-            ss.debugger.critical("failed to execute local ssh: /usr/sbin/ssh -C %s", (command,))
+            ss.debugger.info("successfully tested ssh to remote server: %s", (command,))
+    except Exception as e:
+        ss.debugger.critical("failed to ssh to remote server, unexpected error (%s). Command tried: %s", (e, command))
 
     if ss.daemonize:
         try:
@@ -145,11 +151,14 @@ def start(ss):
             ss.debugger.critical("failed to import daemonize (as user %s), try 'pip install daemonize', exiting", (ss.debugger.whoami()))
         ss.debugger.info("successfully imported daemonize")
 
+        # test that we can write to the pidfile
         try:
             with open(ss.logging["pidfile"], "w"):
                 ss.debugger.info("successfully writing to pidfile")
         except IOError:
             ss.debugger.critical("failed to write to pidfile: %s", (ss.logging["pidfile"],))
+
+        ss.debugger.warning("daemonizing, output redirected to log file: %s", (ss.logging["filename"],))
 
         try:
             daemon = daemonize.Daemonize(app="sucklesync", pid=ss.logging["pidfile"], action=sucklesync, keep_fds=[ss.debugger.handler.stream.fileno()], logger=ss.logger, verbose=True)
@@ -172,3 +181,21 @@ def sucklesync():
     ss = sucklesync.sucklesync_instance
 
     ss.debugger.warning("daemonized")
+
+    for source in ss.paths["source"]:
+        ss.debugger.warning("%s", (source,))
+
+#    # test ssh -- run a NOP find
+#    command = ss.local["ssh"] + " " + ss.remote["hostname"] + " " + ss.local["ssh_flags"] + " " + ss.remote["find"] + " " + ss.remote["find"] + " -type d"
+#    try:
+#        output = EasyProcess(command).call(timeout=ss.remote["timeout"])
+#        if output.timeout_happened:
+#            ss.debugger.critical("failed to ssh to remote server, took longer than %d seconds. Command tried: %s", (ss.remote["timeout"], command))
+#        elif output.return_code:
+#            ss.debugger.critical("ssh to remote server returned error code (%d), error (%s). Command tried: %s", (output.return_code, output.stderr, command))
+#        elif output.oserror:
+#            ss.debugger.critical("failed to ssh to remote server, error (%s). Command tried: %s", (output.oserror, command))
+#        else:
+#            ss.debugger.info("successfully tested ssh to remote server: %s", (command,))
+#    except Exception as e:
+#        ss.debugger.critical("failed to ssh to remote server, unexpected error (%s). Command tried: %s", (e, command))

@@ -19,5 +19,5 @@ setup(name="sucklesync",
       scripts=["bin/sucklesync"],
       download_url = "https://github.com/jeremyandrews/sucklesync/archive/v0.1.0-alpha.tar.gz",
       include_package_data=True,
-      install_requires=["daemonize>=2.4.7", "pyzmail"],
+      install_requires=["daemonize>=2.4.7", "pyzmail", "easyprocess"],
      )
