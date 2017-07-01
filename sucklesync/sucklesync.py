@@ -26,8 +26,8 @@ class SuckleSync:
         self.remote = {}
         self.paths = []
         self.logging = {}
+        self.frequency = {}
         self.mail = {}
-        self.ssh = {}
 
     def _load_debugger(self):
         import logging.handlers
@@ -69,16 +69,16 @@ class SuckleSync:
 
         # load binary paths and associated flags
         self.local["rsync"] = cmd_quote(self.configuration.GetText("Local", "rsync", "/usr/bin/rsync"))
-        self.local["rsync_flags"] = cmd_quote(self.configuration.GetText("Local", "rsync_flags", "-aP"))
+        self.local["rsync_flags"] = self.configuration.GetText("Local", "rsync_flags", "-aP")
         self.local["ssh"] = cmd_quote(self.configuration.GetText("Local", "ssh", "/usr/bin/ssh"))
-        self.local["ssh_flags"] = cmd_quote(self.configuration.GetText("Local", "ssh_flags", "-C"))
+        self.local["ssh_flags"] = self.configuration.GetText("Local", "ssh_flags", "-C")
         self.remote["find"] = cmd_quote(self.configuration.GetText("Remote", "find", "/usr/bin/find"))
         self.remote["find_flags"] = cmd_quote(self.configuration.GetText("Remote", "find_flags", "-mmin -5 -print"))
 
         # load SSH configuration
         self.remote["hostname"] = self.configuration.GetText("Remote", "hostname")
         self.remote["port"] = self.configuration.GetInt("Remote", "port", 22, False)
-        self.remote["timeout"] = self.configuration.GetInt("Remote", "timeout", 5, False)
+        self.remote["ssh_timeout"] = self.configuration.GetInt("Remote", "ssh_timeout", 5, False)
         self.remote["username"] = self.configuration.GetText("Remote", "username", False, False)
 
         # load paths that will be suckle-synced
@@ -88,6 +88,10 @@ class SuckleSync:
         self.logging["filename"] = self.configuration.GetText("Logging", "filename", DEFAULT_LOGFILE, False)
         self.logging["pidfile"] = self.configuration.GetText("Logging", "pidfile", DEFAULT_PIDFILE, False)
         self.logging["level"] = self.configuration.GetText("Logging", "level", DEFAULT_LOGLEVEL, False)
+
+        # load frequency preferences
+        self.frequency["minimum_poll_delay"] = self.configuration.GetInt("Frequency", "minimum_poll_delay", 60, False)
+        self.frequency["maximum_poll_delay"] = self.configuration.GetInt("Frequency", "maximum_poll_delay", 60, False)
 
         # load email preferences
         self.mail["enabled"] = self.configuration.GetBoolean("Email", "enabled", False, False)
@@ -104,10 +108,6 @@ class SuckleSync:
         self.mail["password"] = self.configuration.GetText("Email", "smtp_password", None, required)
 
 def start(ss):
-    import sys
-    import os
-    import subprocess
-
     ss.debugger.warning("starting sucklesync")
     sucklesync.sucklesync_instance = ss
 
@@ -118,30 +118,15 @@ def start(ss):
     except IOError:
         ss.debugger.critical("failed to write to logfile: %s", (ss.logging["filename"],))
 
-    # test rsync -- run a NOP
-    try:
-        subprocess.call([ss.local["rsync"], "-qh"])
-        ss.debugger.info("successfully tested local rsync: %s -qh", (ss.local["rsync"],))
-    except OSError as e:
-        if e.errno == os.errno.ENOENT:
-            ss.debugger.critical("failed to find local rsync: %s", (ss.local["rsync"],))
-        else:
-            ss.debugger.critical("failed to execute local rsync: %s -qh", (ss.local["rsync"],))
+    # test rsync -- run a NOP, only success returns
+    command = ss.local["rsync"] + " -qh"
+    _rsync(command)
+    ss.debugger.info("successfully tested local rsync: %s", (command,))
 
-    # test ssh -- run a NOP find
+    # test ssh -- run a NOP find, only success returns
     command = ss.local["ssh"] + " " + ss.remote["hostname"] + " " + ss.local["ssh_flags"] + " " + ss.remote["find"] + " " + ss.remote["find"] + " -type d"
-    try:
-        output = EasyProcess(command).call(timeout=ss.remote["timeout"])
-        if output.timeout_happened:
-            ss.debugger.critical("failed to ssh to remote server, took longer than %d seconds. Command tried: %s", (ss.remote["timeout"], command))
-        elif output.return_code:
-            ss.debugger.critical("ssh to remote server returned error code (%d), error (%s). Command tried: %s", (output.return_code, output.stderr, command))
-        elif output.oserror:
-            ss.debugger.critical("failed to ssh to remote server, error (%s). Command tried: %s", (output.oserror, command))
-        else:
-            ss.debugger.info("successfully tested ssh to remote server: %s", (command,))
-    except Exception as e:
-        ss.debugger.critical("failed to ssh to remote server, unexpected error (%s). Command tried: %s", (e, command))
+    _ssh(command)
+    ss.debugger.info("successfully tested ssh to remote server: %s", (command,))
 
     if ss.daemonize:
         try:
@@ -178,25 +163,110 @@ def restart(ss):
 def status(ss):
     print "sucklesync status ..."
 
+def _ssh(command):
+    ss = sucklesync.sucklesync_instance
+    ss.debugger.debug("_ssh: %s", (command,))
+
+    try:
+        output = EasyProcess(command).call(timeout=ss.remote["ssh_timeout"])
+        if output.timeout_happened:
+            ss.debugger.critical("failed to ssh to remote server, took longer than %d seconds. Failed command: %s", (ss.remote["timeout"], command))
+        elif output.return_code:
+            ss.debugger.critical("ssh to remote server returned error code (%d), error (%s). Failed command: %s", (output.return_code, output.stderr, command))
+        elif output.oserror:
+            ss.debugger.critical("failed to ssh to remote server, error (%s). Failed command: %s", (output.oserror, command))
+
+        return output.stdout.splitlines()
+
+    except Exception as e:
+        ss.debugger.error("_ssh exception, failed command: %s", (command,))
+        ss.debugger.dump_exception("_ssh() exception")
+
+def _rsync(command):
+    ss = sucklesync.sucklesync_instance
+    ss.debugger.debug("_rsync: %s", (command,))
+
+    try:
+        output = EasyProcess(command).call()
+        if output.return_code:
+            ss.debugger.critical("rsync returned error code (%d), error (%s). Failed command: %s", (output.return_code, output.stderr, command))
+        elif output.oserror:
+            ss.debugger.critical("rsync failed, error (%s). Failed command: %s", (output.oserror, command))
+
+        return output.stdout.splitlines()
+
+    except Exception as e:
+        ss.debugger.error("_rsync exception, failed command: %s", (command,))
+        ss.debugger.dump_exception("_rsync() exception")
+
+
 def sucklesync():
+    from utils import simple_timer
+    import re
+    import time
+
     ss = sucklesync.sucklesync_instance
 
-    ss.debugger.warning("daemonized")
+    run = True
+    timer = None
 
-    for source in ss.paths["source"]:
-        command = ss.local["ssh"] + " " + ss.remote["hostname"] + " " + ss.local["ssh_flags"] + " " + ss.remote["find"] + " " + ss.remote["find_flags"] + " " + source
-        ss.debugger.warning("%s", (command,))
+    sleep_delay = 0
 
-#    # test ssh -- run a NOP find
-#    try:
-#        output = EasyProcess(command).call(timeout=ss.remote["timeout"])
-#        if output.timeout_happened:
-#            ss.debugger.critical("failed to ssh to remote server, took longer than %d seconds. Command tried: %s", (ss.remote["timeout"], command))
-#        elif output.return_code:
-#            ss.debugger.critical("ssh to remote server returned error code (%d), error (%s). Command tried: %s", (output.return_code, output.stderr, command))
-#        elif output.oserror:
-#            ss.debugger.critical("failed to ssh to remote server, error (%s). Command tried: %s", (output.oserror, command))
-#        else:
-#            ss.debugger.info("successfully tested ssh to remote server: %s", (command,))
-#    except Exception as e:
-#        ss.debugger.critical("failed to ssh to remote server, unexpected error (%s). Command tried: %s", (e, command))
+    while run:
+        if timer:
+            # When no files are being transferred, sleep for greater and greater
+            # periods of time, up to a maximum.
+            if (timer.elapsed() < ss.frequency["minimum_poll_delay"]):
+                if sleep_delay < ss.frequency["maximum_poll_delay"]:
+                    sleep_delay += ss.frequency["minimum_poll_delay"]
+                if sleep_delay > ss.frequency["maximum_poll_delay"]:
+                    sleep_delay = ss.frequency["maximum_poll_delay"]
+                ss.debugger.debug("sleeping %d seconds", (sleep_delay,))
+                time.sleep(sleep_delay)
+            else:
+                ss.debugger.info("last loop took %d seconds, resetting sleep_delay", (timer.elapsed(),))
+                sleep_delay = 0
+        timer = simple_timer.Timer()
+        key = 0
+        for source in ss.paths["source"]:
+            ss.debugger.info("polling %s ...", (source,))
+            exclude = []
+            command = ss.local["ssh"] + " " + ss.remote["hostname"] + " " + ss.local["ssh_flags"] + " " + ss.remote["find"] + " " + source + " " + ss.remote["find_flags"]
+            output = _ssh(command)
+            for line in output:
+                subpath = re.sub(r"^" + re.escape(source), "", line)
+                try:
+                    directory = subpath.split("/")[1]
+                    if directory not in exclude:
+                        ss.debugger.info(" excluding %s ...", (directory,))
+                        exclude.append(directory)
+                except:
+                    continue
+            # now rsync all but the excluded files
+            command = ss.local["rsync"] + " " + ss.local["rsync_flags"]
+            for directory in exclude:
+                command += " --exclude " + source + "/" + directory
+            command += " " + ss.remote["hostname"] + ":" + source
+            command += " " + ss.paths["destination"][key]
+            key += 1
+
+            output = _rsync(command)
+
+            synced = []
+            preamble = True
+            for line in output:
+                if preamble:
+                    if re.search("files to consider$", line):
+                        preamble = False
+                else:
+                    try:
+                        directory = line.split("/")[0]
+                        if directory[0] == ".":
+                            continue
+                        if directory and directory not in synced:
+                            ss.debugger.debug(" synced %s ...", (directory,))
+                            synced.append(directory)
+                    except:
+                        # rsync suffix starts with a blank line
+                        # @TODO capture this information for notification emails
+                        break
