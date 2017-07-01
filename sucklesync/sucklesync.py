@@ -34,7 +34,7 @@ class SuckleSync:
 
         try:
             self.logger = logging.getLogger(__name__)
-            self.debugger = debug.Debugger(self.verbose, self.logger, debug.FILE)
+            self.debugger = debug.Debugger(self.verbose, self.logger, debug.PRINT)
             # start by logging to stdout
             self.debugger.handler = logging.StreamHandler()
             formatter = logging.Formatter(DEFAULT_LOGFORMAT)
@@ -161,6 +161,7 @@ def start(ss):
         ss.debugger.warning("daemonizing, output redirected to log file: %s", (ss.logging["filename"],))
 
         try:
+            ss.debugger.logToFile()
             daemon = daemonize.Daemonize(app="sucklesync", pid=ss.logging["pidfile"], action=sucklesync, keep_fds=[ss.debugger.handler.stream.fileno()], logger=ss.logger, verbose=True)
             daemon.start()
         except Exception as e:
@@ -183,10 +184,10 @@ def sucklesync():
     ss.debugger.warning("daemonized")
 
     for source in ss.paths["source"]:
-        ss.debugger.warning("%s", (source,))
+        command = ss.local["ssh"] + " " + ss.remote["hostname"] + " " + ss.local["ssh_flags"] + " " + ss.remote["find"] + " " + ss.remote["find_flags"] + " " + source
+        ss.debugger.warning("%s", (command,))
 
 #    # test ssh -- run a NOP find
-#    command = ss.local["ssh"] + " " + ss.remote["hostname"] + " " + ss.local["ssh_flags"] + " " + ss.remote["find"] + " " + ss.remote["find"] + " -type d"
 #    try:
 #        output = EasyProcess(command).call(timeout=ss.remote["timeout"])
 #        if output.timeout_happened:

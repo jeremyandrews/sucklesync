@@ -44,7 +44,7 @@ class Config:
                 value = None
             return self._GetValue(section, option, value, default, required, secret)
         except Exception as e:
-            self.debugger.dump_exception("GetText() caught exception")
+            self.debugger.dump_exception("GetText() exception while reading configuration")
 
     def GetInt(self, section, option, default = None, required = True, secret = False):
         try:
@@ -54,7 +54,7 @@ class Config:
                 value = None
             return self._GetValue(section, option, value, default, required, secret)
         except Exception as e:
-            self.debugger.dump_exception("GetInt() caught exception")
+            self.debugger.dump_exception("GetInt() exception while reading configuration")
 
     def GetBoolean(self, section, option, default = None, required = True, secret = False):
         try:
@@ -64,7 +64,7 @@ class Config:
                 value = None
             return self._GetValue(section, option, value, default, required, secret)
         except Exception as e:
-            self.debugger.dump_exception("GetBoolean() caught exception")
+            self.debugger.dump_exception("GetBoolean() exception while reading configuration")
 
     def GetTextList(self, section, option, default = None, required = True, secret = False, quiet = False):
         try:
@@ -81,7 +81,7 @@ class Config:
             else:
                 return self._GetValue(section, option, textlist, default, required, secret)
         except Exception as e:
-            self.debugger.dump_exception("GetTextList() caught exception")
+            self.debugger.dump_exception("GetTextList() exception while reading configuration")
 
     def GetEmailList(self, section, option, default = None, required = True, secret = False):
         try:
@@ -105,7 +105,7 @@ class Config:
                         self.debugger.error('ignoring invalid email address (%s)', (email,))
             return self._GetValue(section, option, addresses, default, required, secret)
         except Exception as e:
-            self.debugger.dump_exception("GetEmailList() caught exception")
+            self.debugger.dump_exception("GetEmailList() exception while reading configuration")
 
     def GetItemPairs(self, section, keys):
         import re
@@ -133,24 +133,31 @@ class Config:
                 previous_size = -1
                 for key in keys:
                     ordered = []
-                    pairs[key].sort
-                    previous_id = -1
-                    for id, value in pairs[key]:
-                        if previous_id >= 0 and previous_id + 1 != int(id):
+                    try:
+                        pairs[key].sort
+                        previous_id = -1
+                        for id, value in pairs[key]:
+                            if previous_id >= 0 and previous_id + 1 != int(id):
+                                valid = False
+                                self.debugger.error("[%s] '%s' missing key %d", (section, key, previous_id + 1))
+                                print "[%s] '%s' missing key %d" % (section, key, previous_id + 1)
+                            ordered.append(value)
+                            previous_id = int(id)
+                        pairs[key] = ordered
+                        size = len(pairs[key])
+                        if previous_size >= 0 and previous_size != size:
                             valid = False
-                            self.debugger.error("[%s] '%s' missing key %d", (section, key, previous_id + 1))
-                            print "[%s] '%s' missing key %d" % (section, key, previous_id + 1)
-                        ordered.append(value)
-                        previous_id = int(id)
-                    pairs[key] = ordered
-                    size = len(pairs[key])
-                    if previous_size >= 0 and previous_size != size:
+                            self.debugger.error("[%s] '%s' has mismatched number of keys", (section, key,))
+                            print "[%s] '%s' has mismatched number of keys" % (section, key,)
+                        previous_size = size
+                    except:
                         valid = False
-                        self.debugger.error("[%s] '%s' has mismatched number of keys", (section, key,))
-                        print "[%s] '%s' has mismatched number of keys" % (section, key,)
-                    previous_size = size
+                        self.debugger.error("one or more '%s' keys missing from configuration", (key,))
                 for key in keys:
-                    size = len(pairs[key])
+                    try:
+                        size = len(pairs[key])
+                    except:
+                        valid = False
                 if valid:
                     return pairs
                 else:
@@ -159,7 +166,7 @@ class Config:
                 pairs = None
             return pairs
         except Exception as e:
-            self.debugger.dump_exception("GetItems() caught exception")
+            self.debugger.dump_exception("GetItems() exception while reading configuration")
 
 # Perform simplistic email address validation.
 def valid_email_address(address):
@@ -170,4 +177,4 @@ def valid_email_address(address):
         else:
             return True
     except Exception as e:
-        self.debugger.dump_exception("valid_email_address() caught exception")
+        self.debugger.dump_exception("valid_email_address() exception while reading configuration")

@@ -75,15 +75,16 @@ class Debugger:
                 else:
                     self.logger.log(level, message)
 
-            if fatal:
-                self.fatal("Fatal Error: exiting")
-
             if self.mode == PRINT:
                 if ((self.verbose and verbose >= self.verbose) or (verbose == ALWAYS)):
                     if args:
                         print message % args
                     else:
                         print message
+
+            if fatal:
+                self.fatal("fatal error: exiting")
+
         except Exception as e:
             print "%s" % e
 
@@ -97,6 +98,9 @@ class Debugger:
         self.level = level
         if self.mode == FILE:
             self.logger.setLevel(level)
+
+    def logToFile(self):
+        self.mode = FILE
 
     def debug(self, message, args = None):
         self.log(message, args, DEBUG)
