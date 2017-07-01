@@ -107,6 +107,28 @@ class SuckleSync:
         self.mail["username"] = self.configuration.GetText("Email", "smtp_username", None, required)
         self.mail["password"] = self.configuration.GetText("Email", "smtp_password", None, required)
 
+    # Determine if pid in pidfile is a running process.
+    def is_running(self):
+        import os
+        import errno
+
+        running = False
+        if self.logging["pidfile"]:
+            if os.path.isfile(self.logging["pidfile"]):
+                f = open(self.logging["pidfile"])
+                pid = int(f.readline())
+                f.close()
+                if pid > 0:
+                    self.debugger.info("Found pidfile %s, contained pid %d", (self.logging["pidfile"], pid))
+                    try:
+                        os.kill(pid, 0)
+                    except OSError as e:
+                        if e.errno == errno.EPERM:
+                            running = pid
+                    else:
+                        running = pid
+        return running
+
 def start(ss):
     ss.debugger.warning("starting sucklesync")
     sucklesync.sucklesync_instance = ss
@@ -154,14 +176,49 @@ def start(ss):
     else:
         sucklesync()
 
-def stop(ss):
-    ss.debugger.warning("stopping sucklesync")
+def stop(ss, must_be_running = True):
+    import os
+    import signal
+    import errno
+
+    pid = ss.is_running()
+
+    if not pid:
+        if must_be_running:
+            ss.debugger.critical("Sucklesync is not running.")
+        else:
+            ss.debugger.info("Sucklesync is not running.")
+    else:
+        ss.debugger.warning("Stopping sucklesync...")
+
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError as e:
+            if e.errno == errno.EPERM:
+                ss.debugger.critical("Failed (perhaps try with sudo): %s", (e))
+            else:
+                ss.debugger.critical("Failed: %s", (e,))
 
 def restart(ss):
-    ss.debugger.warning("restarting sucklesync")
+    import time
+
+    stop(ss, False)
+    running = ss.is_running()
+    loops = 0
+    while running:
+        loops += 1
+        if (loops > 15):
+            ss.debugger.critical("Failed to stop sucklesync.")
+        time.sleep(0.2)
+        running = ss.is_running()
+    start(ss)
 
 def status(ss):
-    print "sucklesync status ..."
+    pid = ss.is_running()
+    if pid:
+        ss.debugger.warning("Sucklesync is running with pid %d", (pid,))
+    else:
+        ss.debugger.warning("Sucklesync is not running.")
 
 def _ssh(command):
     ss = sucklesync.sucklesync_instance
