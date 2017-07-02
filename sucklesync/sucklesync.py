@@ -72,6 +72,7 @@ class SuckleSync:
         self.local["rsync_flags"] = self.configuration.GetText("Local", "rsync_flags", "-aP")
         self.local["ssh"] = cmd_quote(self.configuration.GetText("Local", "ssh", "/usr/bin/ssh"))
         self.local["ssh_flags"] = self.configuration.GetText("Local", "ssh_flags", "-C")
+        self.local["delete"] = self.configuration.GetBoolean("Local", 'cleanup')
         self.remote["find"] = cmd_quote(self.configuration.GetText("Remote", "find", "/usr/bin/find"))
         self.remote["find_flags"] = cmd_quote(self.configuration.GetText("Remote", "find_flags", "-mmin -5 -print"))
 
@@ -263,31 +264,34 @@ def _cleanup(source, key):
     ss.debugger.debug("_cleanup: %s (%d)", (source, key))
 
     # Delete files/directories that were deleted on the source.
-    cleanup = ss.local["rsync"] + " --recursive --delete --ignore-existing --existing --prune-empty-dirs --verbose --dry-run "
-    cleanup += ss.remote["hostname"] + ":'" + source + "/'"
-    cleanup += " " + ss.paths["destination"][key]
-    output = _rsync(cleanup)
+    if ss.local["delete"]:
+        cleanup = ss.local["rsync"] + " --recursive --delete --ignore-existing --existing --prune-empty-dirs --verbose --dry-run "
+        cleanup += ss.remote["hostname"] + ":'" + source + "/'"
+        cleanup += " " + ss.paths["destination"][key]
+        output = _rsync(cleanup)
 
-    deleted = []
-    prefix = True
-    for line in output:
-        if prefix:
-            if re.search("receiving file list", line):
-                prefix = False
+        deleted = []
+        prefix = True
+        for line in output:
+            if prefix:
+                if re.search("receiving file list", line):
+                    prefix = False
+                else:
+                    ss.debugger.debug("PREFIX: %s", (line,))
             else:
-                ss.debugger.debug("PREFIX: %s", (line,))
-        else:
-            try:
-                if re.search("sent (.*) bytes", line):
-                    # All done with the information we care about.
-                    break
-                directory_deleted = line.split("/")[0]
-                if directory_deleted and directory_deleted not in deleted:
-                    ss.debugger.debug(" %s ...", (directory_deleted,))
-                    deleted.append(directory_deleted)
-            except:
-                # This shouldn't happen during file deletion.
-                continue
+                try:
+                    if re.search("sent (.*) bytes", line):
+                        # All done with the information we care about.
+                        break
+                    directory_deleted = line.split("/")[0]
+                    if directory_deleted and directory_deleted not in deleted:
+                        ss.debugger.debug(" %s ...", (directory_deleted,))
+                        deleted.append(directory_deleted)
+                except:
+                    # This shouldn't happen during file deletion.
+                    continue
+    else:
+        ss.debugger.debug("local delete disabled")
 
 def sucklesync():
     from utils import simple_timer

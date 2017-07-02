@@ -16,7 +16,7 @@ class Config:
         if not value and default:
             value = default
 
-        if required and not value:
+        if required and not value and value != False:
             self.debugger.critical("Required [%s] '%s' not defined in configuration file, exiting.", (section, option))
 
         if value != None:
