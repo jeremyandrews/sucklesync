@@ -48,14 +48,19 @@ destination to be local. For example:
 - [Local]
 
 Sucklesync needs to know the full path to rsync and ssh on your
-local server. It also currently assumes the "-aP" flags on rsync,
-it is not recommended you change this or things may break.
+local server. It also currently assumes the "-a --verbose" flags
+on rsync, it is not recommended you change this or things will
+very likely break.
+
+By default, rsync will delete local files that don't exist on the
+remote server. To disable this feature, set "delete = no".
 
 	[Local]
 	rsync = /usr/bin/rsync
-	rsync_flags = -aP --dry-run
+	rsync_flags = -a --delete
 	ssh = /usr/bin/ssh
 	ssh_flags = -C
+        delete = yes
 
 - [Remote]
 

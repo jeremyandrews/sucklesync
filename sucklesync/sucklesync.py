@@ -281,10 +281,8 @@ def _cleanup(source, key):
                     if re.search("sent (.*) bytes", line):
                         # All done with the information we care about.
                         break
-                    directory_deleted = line.split("/")[0]
-                    if directory_deleted and directory_deleted not in deleted:
-                        ss.debugger.debug(" %s ...", (directory_deleted,))
-                        deleted.append(directory_deleted)
+                    ss.debugger.debug(" %s ...", (line,))
+                    deleted.append(line)
                 except:
                     # This shouldn't happen during file deletion.
                     continue
