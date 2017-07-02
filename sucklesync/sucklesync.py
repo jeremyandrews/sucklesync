@@ -303,23 +303,51 @@ def sucklesync():
                         include.append(directory)
                 except:
                     continue
+
             # Now rsync the list one by one, allowing for useful emails.
-            binary = ss.local["rsync"] + " " + ss.local["rsync_flags"]
             for directory in include:
-                command = binary + " " + ss.remote["hostname"] + ":" + source + "'/"
-                command +=  re.escape(directory) + "'"
-                command += " " + ss.paths["destination"][key]
-                output = _rsync(command)
+                # Delete files/directories that were deleted on the source.
+                cleanup = ss.local["rsync"] + " --recursive --delete --ignore-existing --existing --prune-empty-dirs --verbose --dry-run "
+                cleanup += ss.remote["hostname"] + ":'" + source + "/'"
+                cleanup += " " + ss.paths["destination"][key]
+                output = _rsync(cleanup)
+
+                deleted = []
+                prefix = True
+                for line in output:
+                    if prefix:
+                        if re.search("receiving file list", line):
+                            prefix = False
+                        else:
+                            ss.debugger.debug("PREFIX: %s", (line,))
+                    else:
+                        try:
+                            if re.search("sent (.*) bytes", line):
+                                # All done with the information we care about.
+                                break
+                            directory_deleted = line.split("/")[0]
+                            if directory_deleted and directory_deleted not in deleted:
+                                ss.debugger.debug(" %s ...", (directory_deleted,))
+                                deleted.append(directory_deleted)
+                        except:
+                            # This shouldn't happen during file deletion.
+                            continue
+
+                # Sync queued list of directories.
+                sync = ss.local["rsync"] + " " + ss.local["rsync_flags"]
+                sync += " " + ss.remote["hostname"] + ":'" + source + "/"
+                sync +=  re.escape(directory) + "'"
+                sync += " " + ss.paths["destination"][key]
+                output = _rsync(sync)
 
                 synced = []
-                preamble = True
+                prefix = True
                 suffix = False
                 for line in output:
-                    if preamble:
-                        if re.search("files to consider$", line):
-                            preamble = False
+                    if prefix:
+                        if re.search(" to consider$", line):
+                            prefix = False
                     elif suffix:
-                        # @TODO capture this information for notification emails
                         ss.debugger.debug("stats: %s", (line,))
                     else:
                         try:
