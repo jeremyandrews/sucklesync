@@ -1,3 +1,6 @@
+v0.3.0, 3-July-2017
+ - support for sending basic email notifications
+
 v0.2.0, 2-July-2017
  - sync files one directory at a time (for logging/notifications)
  - document configuration

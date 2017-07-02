@@ -7,6 +7,7 @@ from easyprocess import EasyProcess
 
 import sucklesync
 from utils import debug
+from utils import email
 from config import config
 
 sucklesync_instance = None
@@ -72,7 +73,7 @@ class SuckleSync:
         self.local["rsync_flags"] = self.configuration.GetText("Local", "rsync_flags", "-aP")
         self.local["ssh"] = cmd_quote(self.configuration.GetText("Local", "ssh", "/usr/bin/ssh"))
         self.local["ssh_flags"] = self.configuration.GetText("Local", "ssh_flags", "-C")
-        self.local["delete"] = self.configuration.GetBoolean("Local", 'cleanup')
+        self.local["delete"] = self.configuration.GetBoolean("Local", "delete")
         self.remote["find"] = cmd_quote(self.configuration.GetText("Remote", "find", "/usr/bin/find"))
         self.remote["find_flags"] = cmd_quote(self.configuration.GetText("Remote", "find_flags", "-mmin -5 -print"))
 
@@ -97,16 +98,13 @@ class SuckleSync:
         # load email preferences
         self.mail["enabled"] = self.configuration.GetBoolean("Email", "enabled", False, False)
         if self.mail["enabled"]:
-            required = True
-        else:
-            required = False
-        self.mail["to"] = self.configuration.GetEmailList("Email", "to", None, required)
-        self.mail["from"] = self.configuration.GetEmailList("Email", "from", None, required)
-        self.mail["hostname"] = self.configuration.GetInt("Email", "smtp_hostname", None, required)
-        self.mail["port"] = self.configuration.GetInt("Email", "smtp_port", 587, required)
-        self.mail["mode"] = self.configuration.GetText("Email", "smtp_mode", None, required)
-        self.mail["username"] = self.configuration.GetText("Email", "smtp_username", None, required)
-        self.mail["password"] = self.configuration.GetText("Email", "smtp_password", None, required)
+            self.mail["to"] = self.configuration.GetEmailList("Email", "to", None)
+            self.mail["from"] = self.configuration.GetEmailList("Email", "from", None)
+            self.mail["hostname"] = self.configuration.GetText("Email", "smtp_hostname", None)
+            self.mail["port"] = self.configuration.GetInt("Email", "smtp_port", 587)
+            self.mail["mode"] = self.configuration.GetText("Email", "smtp_mode", None)
+            self.mail["username"] = self.configuration.GetText("Email", "smtp_username", None)
+            self.mail["password"] = self.configuration.GetText("Email", "smtp_password", None)
 
     # Determine if pid in pidfile is a running process.
     def is_running(self):
@@ -265,8 +263,8 @@ def _cleanup(source, key):
 
     # Delete files/directories that were deleted on the source.
     if ss.local["delete"]:
-        cleanup = ss.local["rsync"] + " --recursive --delete --ignore-existing --existing --prune-empty-dirs --verbose --dry-run "
-        cleanup += ss.remote["hostname"] + ":'" + source + "/'"
+        cleanup = ss.local["rsync"] + " --recursive --delete --ignore-existing --existing --prune-empty-dirs --verbose"
+        cleanup += " " + ss.remote["hostname"] + ":'" + source + "/'"
         cleanup += " " + ss.paths["destination"][key]
         output = _rsync(cleanup)
 
@@ -305,6 +303,9 @@ def sucklesync():
 
     sleep_delay = 0
 
+    if ss.mail["enabled"]:
+        ss.mail["email"] = email.Email(ss)
+
     while run:
         if timer:
             # When no files are being transferred, sleep for greater and greater
@@ -342,7 +343,6 @@ def sucklesync():
                 except:
                     continue
 
-
             # Now rsync the list one by one, allowing for useful emails.
             for directory in include:
                 _cleanup(source, key)
@@ -354,24 +354,40 @@ def sucklesync():
                 output = _rsync(sync)
 
                 synced = []
+                transferred = False
+                mail_text = "Successfully synchronized:\n"
+                mail_html = "<html><title>successfully synchronized</title><body><p>Successfully synchronized:</p><ul>"
                 prefix = True
                 suffix = False
                 for line in output:
                     if prefix:
-                        if re.search(" to consider$", line):
+                        if re.search("receiving file list", line):
                             prefix = False
                     elif suffix:
+                        mail_text += line
+                        mail_html += "<br />" + line
                         ss.debugger.debug("stats: %s", (line,))
                     else:
                         try:
+                            if re.search("sent (.*) bytes", line):
+                                suffix = True
+                                mail_text += "\n" + line
+                                mail_html += "</ul><p>" + line
+                                continue
                             directory_synced = line.split("/")[0]
                             if directory_synced and directory_synced not in synced:
+                                transferred = True
+                                mail_text += " - " + directory_synced + "\n"
+                                mail_html += "<li>" + directory_synced
                                 ss.debugger.debug(" synced %s ...", (directory_synced,))
                                 synced.append(directory_synced)
                         except:
                             # rsync suffix starts with a blank line
                             suffix = True
                             continue
+                if transferred:
+                    mail_html += "</p></body></html>"
+                    ss.mail["email"].MailSend("[sucklesync] file copied", mail_text, mail_html)
             key += 1
 
 
