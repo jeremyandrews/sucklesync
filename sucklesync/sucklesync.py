@@ -284,46 +284,53 @@ def sucklesync():
                 ss.debugger.info("last loop took %d seconds, resetting sleep_delay", (timer.elapsed(),))
                 sleep_delay = 0
         timer = simple_timer.Timer()
+
         key = 0
         for source in ss.paths["source"]:
+            # Build a list of files to transer.
             ss.debugger.info("polling %s ...", (source,))
-            exclude = []
+            include = []
             command = ss.local["ssh"] + " " + ss.remote["hostname"] + " " + ss.local["ssh_flags"] + " " + ss.remote["find"] + " " + source + " " + ss.remote["find_flags"]
             output = _ssh(command)
             for line in output:
                 subpath = re.sub(r"^" + re.escape(source), "", line)
                 try:
                     directory = subpath.split("/")[1]
-                    if directory not in exclude:
-                        ss.debugger.info(" excluding %s ...", (directory,))
-                        exclude.append(directory)
+                    if directory[0] == ".":
+                        continue
+                    elif directory not in include:
+                        ss.debugger.info(" queueing %s ...", (directory,))
+                        include.append(directory)
                 except:
                     continue
-            # now rsync all but the excluded files
-            command = ss.local["rsync"] + " " + ss.local["rsync_flags"]
-            for directory in exclude:
-                command += " --exclude " + source + "/" + directory
-            command += " " + ss.remote["hostname"] + ":" + source
-            command += " " + ss.paths["destination"][key]
+            # Now rsync the list one by one, allowing for useful emails.
+            binary = ss.local["rsync"] + " " + ss.local["rsync_flags"]
+            for directory in include:
+                command = binary + " " + ss.remote["hostname"] + ":" + source + "'/"
+                command +=  re.escape(directory) + "'"
+                command += " " + ss.paths["destination"][key]
+                output = _rsync(command)
+
+                synced = []
+                preamble = True
+                suffix = False
+                for line in output:
+                    if preamble:
+                        if re.search("files to consider$", line):
+                            preamble = False
+                    elif suffix:
+                        # @TODO capture this information for notification emails
+                        ss.debugger.debug("stats: %s", (line,))
+                    else:
+                        try:
+                            directory_synced = line.split("/")[0]
+                            if directory_synced and directory_synced not in synced:
+                                ss.debugger.debug(" synced %s ...", (directory_synced,))
+                                synced.append(directory_synced)
+                        except:
+                            # rsync suffix starts with a blank line
+                            suffix = True
+                            continue
             key += 1
 
-            output = _rsync(command)
 
-            synced = []
-            preamble = True
-            for line in output:
-                if preamble:
-                    if re.search("files to consider$", line):
-                        preamble = False
-                else:
-                    try:
-                        directory = line.split("/")[0]
-                        if directory[0] == ".":
-                            continue
-                        if directory and directory not in synced:
-                            ss.debugger.debug(" synced %s ...", (directory,))
-                            synced.append(directory)
-                    except:
-                        # rsync suffix starts with a blank line
-                        # @TODO capture this information for notification emails
-                        break
