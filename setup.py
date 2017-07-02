@@ -6,7 +6,7 @@ except ImportError:
     from distutils.core import setup
 
 setup(name="sucklesync",
-      version="0.3.0-dev",
+      version="0.3.0",
       author="Jeremy Andrews",
       author_email="jeremy@tag1consulting.com",
       maintainer="Jeremy Andrews",
