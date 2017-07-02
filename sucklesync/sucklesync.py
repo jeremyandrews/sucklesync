@@ -256,6 +256,38 @@ def _rsync(command):
         ss.debugger.error("_rsync exception, failed command: %s", (command,))
         ss.debugger.dump_exception("_rsync() exception")
 
+def _cleanup(source, key):
+    import re
+
+    ss = sucklesync.sucklesync_instance
+    ss.debugger.debug("_cleanup: %s (%d)", (source, key))
+
+    # Delete files/directories that were deleted on the source.
+    cleanup = ss.local["rsync"] + " --recursive --delete --ignore-existing --existing --prune-empty-dirs --verbose --dry-run "
+    cleanup += ss.remote["hostname"] + ":'" + source + "/'"
+    cleanup += " " + ss.paths["destination"][key]
+    output = _rsync(cleanup)
+
+    deleted = []
+    prefix = True
+    for line in output:
+        if prefix:
+            if re.search("receiving file list", line):
+                prefix = False
+            else:
+                ss.debugger.debug("PREFIX: %s", (line,))
+        else:
+            try:
+                if re.search("sent (.*) bytes", line):
+                    # All done with the information we care about.
+                    break
+                directory_deleted = line.split("/")[0]
+                if directory_deleted and directory_deleted not in deleted:
+                    ss.debugger.debug(" %s ...", (directory_deleted,))
+                    deleted.append(directory_deleted)
+            except:
+                # This shouldn't happen during file deletion.
+                continue
 
 def sucklesync():
     from utils import simple_timer
@@ -287,7 +319,9 @@ def sucklesync():
 
         key = 0
         for source in ss.paths["source"]:
-            # Build a list of files to transer.
+            _cleanup(source, key)
+
+            # Build a list of files to transfer.
             ss.debugger.info("polling %s ...", (source,))
             include = []
             command = ss.local["ssh"] + " " + ss.remote["hostname"] + " " + ss.local["ssh_flags"] + " " + ss.remote["find"] + " " + source + " " + ss.remote["find_flags"]
@@ -304,35 +338,10 @@ def sucklesync():
                 except:
                     continue
 
+
             # Now rsync the list one by one, allowing for useful emails.
             for directory in include:
-                # Delete files/directories that were deleted on the source.
-                cleanup = ss.local["rsync"] + " --recursive --delete --ignore-existing --existing --prune-empty-dirs --verbose --dry-run "
-                cleanup += ss.remote["hostname"] + ":'" + source + "/'"
-                cleanup += " " + ss.paths["destination"][key]
-                output = _rsync(cleanup)
-
-                deleted = []
-                prefix = True
-                for line in output:
-                    if prefix:
-                        if re.search("receiving file list", line):
-                            prefix = False
-                        else:
-                            ss.debugger.debug("PREFIX: %s", (line,))
-                    else:
-                        try:
-                            if re.search("sent (.*) bytes", line):
-                                # All done with the information we care about.
-                                break
-                            directory_deleted = line.split("/")[0]
-                            if directory_deleted and directory_deleted not in deleted:
-                                ss.debugger.debug(" %s ...", (directory_deleted,))
-                                deleted.append(directory_deleted)
-                        except:
-                            # This shouldn't happen during file deletion.
-                            continue
-
+                _cleanup(source, key)
                 # Sync queued list of directories.
                 sync = ss.local["rsync"] + " " + ss.local["rsync_flags"]
                 sync += " " + ss.remote["hostname"] + ":'" + source + "/"
