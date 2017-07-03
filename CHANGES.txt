@@ -1,3 +1,7 @@
+v0.3.1, TBD
+ - update documentation
+ - bug fixes
+
 v0.3.0, 3-July-2017
  - support for sending basic email notifications
 

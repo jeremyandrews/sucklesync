@@ -60,7 +60,7 @@ remote server. To disable this feature, set "delete = no".
 	rsync_flags = -a --delete
 	ssh = /usr/bin/ssh
 	ssh_flags = -C
-        delete = yes
+	delete = yes
 
 - [Remote]
 
