@@ -43,7 +43,7 @@ class SuckleSync:
             self.logger.addHandler(self.debugger.handler)
 
         except Exception as e:
-            self.debugger.dump_exception("_load_debugger() caught exception")
+            self.debugger.dump_exception("_load_debugger() exception")
 
     def _enable_debugger(self):
         import logging.handlers
@@ -58,7 +58,7 @@ class SuckleSync:
             self.logger.addHandler(self.debugger.handler)
             self.logger.setLevel(self.logging["level"])
         except Exception as e:
-            self.debugger.dump_exception("_enable_debugger() caught exception")
+            self.debugger.dump_exception("_enable_debugger() exception")
 
     def _load_configuration(self):
         try:
@@ -261,33 +261,39 @@ def _cleanup(source, key):
     ss = sucklesync.sucklesync_instance
     ss.debugger.debug("_cleanup: %s (%d)", (source, key))
 
-    # Delete files/directories that were deleted on the source.
-    if ss.local["delete"]:
-        cleanup = ss.local["rsync"] + " --recursive --delete --ignore-existing --existing --prune-empty-dirs --verbose"
-        cleanup += " " + ss.remote["hostname"] + ":'" + source + "/'"
-        cleanup += " " + ss.paths["destination"][key]
-        output = _rsync(cleanup)
-
+    try:
         deleted = []
-        prefix = True
-        for line in output:
-            if prefix:
-                if re.search("receiving file list", line):
-                    prefix = False
+        if ss.local["delete"]:
+            # Delete files/directories that were deleted on the source.
+            cleanup = ss.local["rsync"] + " --recursive --delete --ignore-existing --existing --prune-empty-dirs --verbose"
+            cleanup += " " + ss.remote["hostname"] + ":'" + source + "/'"
+            cleanup += " " + ss.paths["destination"][key]
+            output = _rsync(cleanup)
+
+            prefix = True
+            for line in output:
+                if prefix:
+                    if re.search("receiving file list", line):
+                        prefix = False
+                    else:
+                        ss.debugger.debug("PREFIX: %s", (line,))
                 else:
-                    ss.debugger.debug("PREFIX: %s", (line,))
-            else:
-                try:
-                    if re.search("sent (.*) bytes", line):
-                        # All done with the information we care about.
-                        break
-                    ss.debugger.debug(" %s ...", (line,))
-                    deleted.append(line)
-                except:
-                    # This shouldn't happen during file deletion.
-                    continue
-    else:
-        ss.debugger.debug("local delete disabled")
+                    try:
+                        if re.search("sent (.*) bytes", line):
+                            # All done with the information we care about.
+                            break
+                        ss.debugger.debug(" %s ...", (line,))
+                        deleted.append(line)
+                    except:
+                        # This shouldn't happen during file deletion.
+                        continue
+        else:
+            ss.debugger.debug("local delete disabled")
+
+        return deleted
+
+    except Exception as e:
+        self.debugger.dump_exception("_cleanup() exception")
 
 def sucklesync():
     from utils import simple_timer
@@ -304,88 +310,90 @@ def sucklesync():
     if ss.mail["enabled"]:
         ss.mail["email"] = email.Email(ss)
 
-    while run:
-        if timer:
-            # When no files are being transferred, sleep for greater and greater
-            # periods of time, up to a maximum.
-            if (timer.elapsed() < ss.frequency["minimum_poll_delay"]):
-                if sleep_delay < ss.frequency["maximum_poll_delay"]:
-                    sleep_delay += ss.frequency["minimum_poll_delay"]
-                if sleep_delay > ss.frequency["maximum_poll_delay"]:
-                    sleep_delay = ss.frequency["maximum_poll_delay"]
-                ss.debugger.debug("sleeping %d seconds", (sleep_delay,))
-                time.sleep(sleep_delay)
-            else:
-                ss.debugger.info("last loop took %d seconds, resetting sleep_delay", (timer.elapsed(),))
-                sleep_delay = 0
-        timer = simple_timer.Timer()
+    try:
+        while run:
+            if timer:
+                # When no files are being transferred, sleep for greater and greater
+                # periods of time, up to a maximum.
+                if (timer.elapsed() < ss.frequency["minimum_poll_delay"]):
+                    if sleep_delay < ss.frequency["maximum_poll_delay"]:
+                        sleep_delay += ss.frequency["minimum_poll_delay"]
+                    if sleep_delay > ss.frequency["maximum_poll_delay"]:
+                        sleep_delay = ss.frequency["maximum_poll_delay"]
+                    ss.debugger.debug("sleeping %d seconds", (sleep_delay,))
+                    time.sleep(sleep_delay)
+                else:
+                    ss.debugger.info("last loop took %d seconds, resetting sleep_delay", (timer.elapsed(),))
+                    sleep_delay = 0
+            timer = simple_timer.Timer()
 
-        key = 0
-        for source in ss.paths["source"]:
-            _cleanup(source, key)
-
-            # Build a list of files to transfer.
-            ss.debugger.info("polling %s ...", (source,))
-            include = []
-            command = ss.local["ssh"] + " " + ss.remote["hostname"] + " " + ss.local["ssh_flags"] + " " + ss.remote["find"] + " " + source + " " + ss.remote["find_flags"]
-            output = _ssh(command)
-            for line in output:
-                subpath = re.sub(r"^" + re.escape(source), "", line)
-                try:
-                    directory = subpath.split("/")[1]
-                    if directory[0] == ".":
-                        continue
-                    elif directory not in include:
-                        ss.debugger.info(" queueing %s ...", (directory,))
-                        include.append(directory)
-                except:
-                    continue
-
-            # Now rsync the list one by one, allowing for useful emails.
-            for directory in include:
+            key = 0
+            for source in ss.paths["source"]:
                 _cleanup(source, key)
-                # Sync queued list of directories.
-                sync = ss.local["rsync"] + " " + ss.local["rsync_flags"]
-                sync += " " + ss.remote["hostname"] + ":'" + source + "/"
-                sync +=  re.escape(directory) + "'"
-                sync += " " + ss.paths["destination"][key]
-                output = _rsync(sync)
 
-                synced = []
-                transferred = False
-                mail_text = "Successfully synchronized:\n"
-                mail_html = "<html><title>successfully synchronized</title><body><p>Successfully synchronized:</p><ul>"
-                prefix = True
-                suffix = False
+                # Build a list of files to transfer.
+                ss.debugger.info("polling %s ...", (source,))
+                include = []
+                command = ss.local["ssh"] + " " + ss.remote["hostname"] + " " + ss.local["ssh_flags"] + " " + ss.remote["find"] + " " + source + " " + ss.remote["find_flags"]
+                output = _ssh(command)
                 for line in output:
-                    if prefix:
-                        if re.search("receiving file list", line):
-                            prefix = False
-                    elif suffix:
-                        mail_text += line
-                        mail_html += "<br />" + line
-                        ss.debugger.debug("stats: %s", (line,))
-                    else:
-                        try:
-                            if re.search("sent (.*) bytes", line):
-                                suffix = True
-                                mail_text += "\n" + line
-                                mail_html += "</ul><p>" + line
-                                continue
-                            directory_synced = line.split("/")[0]
-                            if directory_synced and directory_synced not in synced:
-                                transferred = True
-                                mail_text += " - " + directory_synced + "\n"
-                                mail_html += "<li>" + directory_synced
-                                ss.debugger.debug(" synced %s ...", (directory_synced,))
-                                synced.append(directory_synced)
-                        except:
-                            # rsync suffix starts with a blank line
-                            suffix = True
+                    subpath = re.sub(r"^" + re.escape(source), "", line)
+                    try:
+                        directory = subpath.split("/")[1]
+                        if directory[0] == ".":
                             continue
-                if transferred:
-                    mail_html += "</p></body></html>"
-                    ss.mail["email"].MailSend("[sucklesync] file copied", mail_text, mail_html)
-            key += 1
+                        elif directory not in include:
+                            ss.debugger.info(" queueing %s ...", (directory,))
+                            include.append(directory)
+                    except:
+                        continue
 
+                # Now rsync the list one by one, allowing for useful emails.
+                for directory in include:
+                    _cleanup(source, key)
+                    # Sync queued list of directories.
+                    sync = ss.local["rsync"] + " " + ss.local["rsync_flags"]
+                    sync += " " + ss.remote["hostname"] + ":'" + source + "/"
+                    sync +=  re.escape(directory) + "'"
+                    sync += " " + ss.paths["destination"][key]
+                    output = _rsync(sync)
 
+                    synced = []
+                    transferred = False
+                    mail_text = "Successfully synchronized:\n"
+                    mail_html = "<html><title>successfully synchronized</title><body><p>Successfully synchronized:</p><ul>"
+                    prefix = True
+                    suffix = False
+                    for line in output:
+                        if prefix:
+                            if re.search("receiving file list", line):
+                                prefix = False
+                        elif suffix:
+                            mail_text += line
+                            mail_html += "<br />" + line
+                            ss.debugger.debug("stats: %s", (line,))
+                        else:
+                            try:
+                                if re.search("sent (.*) bytes", line):
+                                    suffix = True
+                                    mail_text += "\n" + line
+                                    mail_html += "</ul><p>" + line
+                                    continue
+                                directory_synced = line.split("/")[0]
+                                if directory_synced and directory_synced not in synced:
+                                    transferred = True
+                                    mail_text += " - " + directory_synced + "\n"
+                                    mail_html += "<li>" + directory_synced
+                                    ss.debugger.debug(" synced %s ...", (directory_synced,))
+                                    synced.append(directory_synced)
+                            except:
+                                # rsync suffix starts with a blank line
+                                suffix = True
+                                continue
+                    if transferred:
+                        mail_html += "</p></body></html>"
+                        ss.mail["email"].MailSend("[sucklesync] file copied", mail_text, mail_html)
+                key += 1
+
+    except Exception as e:
+        self.debugger.dump_exception("sucklesync() exception")
