@@ -329,11 +329,10 @@ def sucklesync():
 
             key = 0
             for source in ss.paths["source"]:
-                _cleanup(source, key)
-
                 # Build a list of files to transfer.
                 ss.debugger.info("polling %s ...", (source,))
                 include = []
+                transferred = False
                 command = ss.local["ssh"] + " " + ss.remote["hostname"] + " " + ss.local["ssh_flags"] + " " + ss.remote["find"] + " " + source + " " + ss.remote["find_flags"]
                 output = _ssh(command)
                 for line in output:
@@ -350,7 +349,6 @@ def sucklesync():
 
                 # Now rsync the list one by one, allowing for useful emails.
                 for directory in include:
-                    _cleanup(source, key)
                     # Sync queued list of directories.
                     sync = ss.local["rsync"] + " " + ss.local["rsync_flags"]
                     sync += " " + ss.remote["hostname"] + ":'" + source + "/"
@@ -393,7 +391,10 @@ def sucklesync():
                     if transferred:
                         mail_html += "</p></body></html>"
                         ss.mail["email"].MailSend("[sucklesync] file copied", mail_text, mail_html)
+                    _cleanup(source, key)
                 key += 1
+                if not transferred:
+                    _cleanup(source, key)
 
     except Exception as e:
         self.debugger.dump_exception("sucklesync() exception")
