@@ -266,7 +266,7 @@ def _cleanup(source, key):
         if ss.local["delete"]:
             # Delete files/directories that were deleted on the source.
             cleanup = ss.local["rsync"] + " --recursive --delete --ignore-existing --existing --prune-empty-dirs --verbose"
-            cleanup += " " + ss.remote["hostname"] + ":'" + source + "/'"
+            cleanup += " " + ss.remote["hostname"] + ':"' + source + '/"'
             cleanup += " " + ss.paths["destination"][key]
             output = _rsync(cleanup)
 
