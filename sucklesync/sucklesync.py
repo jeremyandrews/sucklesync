@@ -12,7 +12,7 @@ from config import config
 
 sucklesync_instance = None
 
-__version__ = "0.1"
+__version__ = "0.3.3"
 
 DEFAULT_CONFIG    = ["/etc/sucklesync.cfg", "/usr/local/etc/sucklesync.cfg", "~/.sucklesync.cfg", "./sucklesync.cfg"]
 DEFAULT_LOGLEVEL  = logging.WARNING
