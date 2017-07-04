@@ -351,8 +351,8 @@ def sucklesync():
                 for directory in include:
                     # Sync queued list of directories.
                     sync = ss.local["rsync"] + " " + ss.local["rsync_flags"]
-                    sync += " " + ss.remote["hostname"] + ":'" + source + "/"
-                    sync +=  re.escape(directory) + "'"
+                    sync += " " + ss.remote["hostname"] + ':"' + source + "/"
+                    sync +=  re.escape(directory) + '"'
                     sync += " " + ss.paths["destination"][key]
                     output = _rsync(sync)
 

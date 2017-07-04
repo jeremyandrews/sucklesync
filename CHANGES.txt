@@ -1,3 +1,6 @@
+v0.3.4, ???
+ - wrap paths in double quotes
+
 v0.3.3, 4-July-2017
  - support freebsd rsync
 
