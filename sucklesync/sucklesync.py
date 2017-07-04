@@ -364,7 +364,7 @@ def sucklesync():
                     suffix = False
                     for line in output:
                         if prefix:
-                            if re.search("receiving file list", line):
+                            if re.search("receiving(.*)file list", line):
                                 prefix = False
                         elif suffix:
                             mail_text += line
