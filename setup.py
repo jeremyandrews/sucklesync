@@ -6,7 +6,7 @@ except ImportError:
     from distutils.core import setup
 
 setup(name="sucklesync",
-      version="0.3.4",
+      version="0.3.5",
       author="Jeremy Andrews",
       author_email="jeremy@tag1consulting.com",
       maintainer="Jeremy Andrews",
@@ -17,7 +17,7 @@ setup(name="sucklesync",
       description="A wrapper around rsync to simplify continuous sychnronization of remote directories",
       long_description=open("README.txt").read(),
       scripts=["bin/sucklesync"],
-      download_url = "https://github.com/jeremyandrews/sucklesync/archive/v0.3.4-alpha.tar.gz",
+      download_url = "https://github.com/jeremyandrews/sucklesync/archive/v0.3.5-alpha.tar.gz",
       include_package_data=True,
       install_requires=["daemonize>=2.4.7", "pyzmail", "easyprocess"],
      )
