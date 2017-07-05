@@ -226,11 +226,11 @@ def _ssh(command):
     try:
         output = EasyProcess(command).call(timeout=ss.remote["ssh_timeout"])
         if output.timeout_happened:
-            ss.debugger.critical("failed to ssh to remote server, took longer than %d seconds. Failed command: %s", (ss.remote["timeout"], command))
+            ss.debugger.error("failed to ssh to remote server, took longer than %d seconds. Failed command: %s", (ss.remote["timeout"], command))
         elif output.return_code:
-            ss.debugger.critical("ssh to remote server returned error code (%d), error (%s). Failed command: %s", (output.return_code, output.stderr, command))
+            ss.debugger.error("ssh to remote server returned error code (%d), error (%s). Failed command: %s", (output.return_code, output.stderr, command))
         elif output.oserror:
-            ss.debugger.critical("failed to ssh to remote server, error (%s). Failed command: %s", (output.oserror, command))
+            ss.debugger.error("failed to ssh to remote server, error (%s). Failed command: %s", (output.oserror, command))
 
         return output.stdout.splitlines()
 
@@ -245,9 +245,9 @@ def _rsync(command):
     try:
         output = EasyProcess(command).call()
         if output.return_code:
-            ss.debugger.critical("rsync returned error code (%d), error (%s). Failed command: %s", (output.return_code, output.stderr, command))
+            ss.debugger.error("rsync returned error code (%d), error (%s). Failed command: %s", (output.return_code, output.stderr, command))
         elif output.oserror:
-            ss.debugger.critical("rsync failed, error (%s). Failed command: %s", (output.oserror, command))
+            ss.debugger.error("rsync failed, error (%s). Failed command: %s", (output.oserror, command))
 
         return output.stdout.splitlines()
 
