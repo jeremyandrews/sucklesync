@@ -12,8 +12,6 @@ from config import config
 
 sucklesync_instance = None
 
-__version__ = "0.3.3"
-
 DEFAULT_CONFIG    = ["/etc/sucklesync.cfg", "/usr/local/etc/sucklesync.cfg", "~/.sucklesync.cfg", "./sucklesync.cfg"]
 DEFAULT_LOGLEVEL  = logging.WARNING
 DEFAULT_LOGFILE   = "/var/log/sucklesync/sucklesync.log"
@@ -293,7 +291,7 @@ def _cleanup(source, key):
         return deleted
 
     except Exception as e:
-        self.debugger.dump_exception("_cleanup() exception")
+        ss.debugger.dump_exception("_cleanup() exception")
 
 def sucklesync():
     from utils import simple_timer
@@ -348,6 +346,7 @@ def sucklesync():
                         continue
 
                 # Now rsync the list one by one, allowing for useful emails.
+                subkey = 0
                 for directory in include:
                     # Sync queued list of directories.
                     sync = ss.local["rsync"] + " " + ss.local["rsync_flags"]
@@ -388,13 +387,23 @@ def sucklesync():
                                 # rsync suffix starts with a blank line
                                 suffix = True
                                 continue
+
                     if transferred:
-                        mail_html += "</p></body></html>"
+                        mail_html += "</p>"
+
+                    if len(include) > subkey + 1:
+                        mail_text += "Next download:\n - " + include[subkey + 1] + "\n"
+                        mail_html += "<hr /><p>Next download:<ul><li>" + include[subkey + 1] + "</li></ul></p>"
+                        ss.debugger.debug(" next up %s ... [%d of %d]", (include[subkey + 1], len(include), subkey))
+
+                    if transferred:
+                        mail_html += "</body></html>"
                         ss.mail["email"].MailSend("[sucklesync] file copied", mail_text, mail_html)
                     _cleanup(source, key)
-                key += 1
+                    subkey += 1
                 if not transferred:
                     _cleanup(source, key)
+                key += 1
 
     except Exception as e:
-        self.debugger.dump_exception("sucklesync() exception")
+        ss.debugger.dump_exception("sucklesync() exception")
