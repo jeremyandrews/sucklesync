@@ -1,3 +1,8 @@
+v0.3.7, 9-July-2017
+ - list next downloads (up to 3)
+ - only cleanup after successful download or completion (try
+   and avoid cleaning up partial downloads after restart)
+
 v0.3.6, 8-July-2017
  - show next download in download notification
 

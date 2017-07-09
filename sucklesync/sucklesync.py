@@ -391,15 +391,26 @@ def sucklesync():
                     if transferred:
                         mail_html += "</p>"
 
+                    # List up to three queued items.
+                    in_list = False
                     if len(include) > subkey + 1:
+                        in_list = True
                         mail_text += "Next download:\n - " + include[subkey + 1] + "\n"
-                        mail_html += "<hr /><p>Next download:<ul><li>" + include[subkey + 1] + "</li></ul></p>"
+                        mail_html += "<hr /><p>Next download:<ul><li>" + include[subkey + 1] + "</li>"
                         ss.debugger.debug(" next up %s ... [%d of %d]", (include[subkey + 1], len(include), subkey))
+                    if in_list and len(include) > subkey + 2:
+                        mail_text += include[subkey + 2] + "\n"
+                        mail_html += "<li>" + include[subkey + 2] + "</li>"
+                    if in_list and len(include) > subkey + 3:
+                        mail_text += include[subkey + 3] + "\n"
+                        mail_html += "<li>" + include[subkey + 3] + "</li>"
+                    if in_list:
+                        mail_html += "</ul></p>"
 
                     if transferred:
                         mail_html += "</body></html>"
                         ss.mail["email"].MailSend("[sucklesync] file copied", mail_text, mail_html)
-                    _cleanup(source, key)
+                        _cleanup(source, key)
                     subkey += 1
                 if not transferred:
                     _cleanup(source, key)
