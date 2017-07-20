@@ -1,3 +1,6 @@
+v0.3.8, ??
+ - properly exclude directories that have subdirectories that are changing
+
 v0.3.7, 9-July-2017
  - list next downloads (up to 3)
  - only cleanup after successful download or completion (try

@@ -73,7 +73,7 @@ class SuckleSync:
         self.local["ssh_flags"] = self.configuration.GetText("Local", "ssh_flags", "-C")
         self.local["delete"] = self.configuration.GetBoolean("Local", "delete")
         self.remote["find"] = cmd_quote(self.configuration.GetText("Remote", "find", "/usr/bin/find"))
-        self.remote["find_flags"] = cmd_quote(self.configuration.GetText("Remote", "find_flags", "-mmin -5 -print"))
+        self.remote["find_flags"] = cmd_quote(self.configuration.GetText("Remote", "find_flags", "-mmin -10 -print"))
 
         # load SSH configuration
         self.remote["hostname"] = self.configuration.GetText("Remote", "hostname")
@@ -144,7 +144,7 @@ def start(ss):
 
     # test ssh -- run a NOP find, only success returns
     command = ss.local["ssh"] + " " + ss.remote["hostname"] + " " + ss.local["ssh_flags"] + " " + ss.remote["find"] + " " + ss.remote["find"] + " -type d"
-    _ssh(command)
+    _ssh(command, True)
     ss.debugger.info("successfully tested ssh to remote server: %s", (command,))
 
     if ss.daemonize:
@@ -217,7 +217,7 @@ def status(ss):
     else:
         ss.debugger.warning("Sucklesync is not running.")
 
-def _ssh(command):
+def _ssh(command, fail_on_error = False):
     ss = sucklesync.sucklesync_instance
     ss.debugger.debug("_ssh: %s", (command,))
 
@@ -329,25 +329,54 @@ def sucklesync():
             for source in ss.paths["source"]:
                 # Build a list of files to transfer.
                 ss.debugger.info("polling %s ...", (source,))
-                include = []
+                initial_queue = []
+                queue = []
                 transferred = False
+                include_flags = "! " + ss.remote["find_flags"]
+                command = ss.local["ssh"] + " " + ss.remote["hostname"] + " " + ss.local["ssh_flags"] + " " + ss.remote["find"] + " " + source + " " + include_flags
+                include = _ssh(command)
                 command = ss.local["ssh"] + " " + ss.remote["hostname"] + " " + ss.local["ssh_flags"] + " " + ss.remote["find"] + " " + source + " " + ss.remote["find_flags"]
-                output = _ssh(command)
-                for line in output:
+                exclude = _ssh(command)
+
+                # We may be having connectivity issues, try again later.
+                if not include:
+                    break
+
+                for line in include:
                     subpath = re.sub(r"^" + re.escape(source), "", line)
                     try:
                         directory = subpath.split("/")[1]
                         if directory[0] == ".":
                             continue
-                        elif directory not in include:
+                        elif directory not in initial_queue:
                             ss.debugger.info(" queueing %s ...", (directory,))
-                            include.append(directory)
+                            initial_queue.append(directory)
                     except:
                         continue
 
+                if exclude:
+                    exclude_from_queue = []
+                    for line in exclude:
+                        subpath = re.sub(r"^" + re.escape(source), "", line)
+                        try:
+                            directory = subpath.split("/")[1]
+                            if directory[0] == ".":
+                                continue
+                            elif directory not in exclude_from_queue:
+                                exclude_from_queue.append(directory)
+                        except:
+                            continue
+                    for line in initial_queue:
+                        if line in exclude_from_queue:
+                            ss.debugger.info(" excluding from queue %s ...", (directory,))
+                        else:
+                            queue.append(line)
+                else:
+                    queue = initial_queue
+
                 # Now rsync the list one by one, allowing for useful emails.
                 subkey = 0
-                for directory in include:
+                for directory in queue:
                     # Sync queued list of directories.
                     sync = ss.local["rsync"] + " " + ss.local["rsync_flags"]
                     sync += " " + ss.remote["hostname"] + ':"' + source + "/"
@@ -393,17 +422,17 @@ def sucklesync():
 
                     # List up to three queued items.
                     in_list = False
-                    if len(include) > subkey + 1:
+                    if len(queue) > subkey + 1:
                         in_list = True
-                        mail_text += "Next download:\n - " + include[subkey + 1] + "\n"
-                        mail_html += "<hr /><p>Next download:<ul><li>" + include[subkey + 1] + "</li>"
-                        ss.debugger.debug(" next up %s ... [%d of %d]", (include[subkey + 1], len(include), subkey))
-                    if in_list and len(include) > subkey + 2:
-                        mail_text += include[subkey + 2] + "\n"
-                        mail_html += "<li>" + include[subkey + 2] + "</li>"
-                    if in_list and len(include) > subkey + 3:
-                        mail_text += include[subkey + 3] + "\n"
-                        mail_html += "<li>" + include[subkey + 3] + "</li>"
+                        mail_text += "Next download:\n - " + queue[subkey + 1] + "\n"
+                        mail_html += "<hr /><p>Next download:<ul><li>" + queue[subkey + 1] + "</li>"
+                        ss.debugger.debug(" next up %s ... [%d of %d]", (queue[subkey + 1], len(queue), subkey))
+                    if in_list and len(queue) > subkey + 2:
+                        mail_text += queue[subkey + 2] + "\n"
+                        mail_html += "<li>" + queue[subkey + 2] + "</li>"
+                    if in_list and len(queue) > subkey + 3:
+                        mail_text += queue[subkey + 3] + "\n"
+                        mail_html += "<li>" + queue[subkey + 3] + "</li>"
                     if in_list:
                         mail_html += "</ul></p>"
 
