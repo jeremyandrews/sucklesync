@@ -1,4 +1,4 @@
-v0.3.8, ??
+v0.3.8, 20-July-2017
  - properly exclude directories that have subdirectories that are changing
 
 v0.3.7, 9-July-2017
